@@ -3,8 +3,15 @@ A lightning fast terminal prompt including detailed Git status info
 ![](example.png)
 
 ## Installation
-`go get github.com/j18e/shell-prompt`
+```
+sh -c $(curl -fsSL https://github.com/j18e/shell-prompt/raw/master/install.sh)
+```
+alternatively, if you have golang set up:
+```
+go get github.com/j18e/shell-prompt
+```
 
+## Usage
 ### Bash
 Add the following to your `.bashrc`:
 ```
