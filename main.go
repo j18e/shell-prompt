@@ -18,9 +18,9 @@ const (
 	PROMPT_ARROW = `❯`
 
 	// colors codes
+	ColorTpl  = "\033[0;%dm"
 	ResetCode = "\033[0m"
 
-	RESET   Color = 0
 	BLUE    Color = 34
 	GREEN   Color = 32
 	MAGENTA Color = 35
@@ -31,18 +31,11 @@ const (
 type Color int
 
 func (c Color) String() string {
-	res := ""
-	if c == RESET {
-		res = ResetCode
-	} else {
-		res = fmt.Sprintf("\033[0;%dm", c)
-	}
-
 	if *ZSH {
 		// this tells zsh that the color code is not part of the prompt length
-		return fmt.Sprintf("%%{%s%%}", res)
+		return fmt.Sprintf("%%{%s%%}", fmt.Sprintf(ColorTpl, c))
 	}
-	return res
+	return fmt.Sprintf(ColorTpl, c)
 }
 
 var (
@@ -54,7 +47,14 @@ func main() {
 	exitCode := flag.Int("exit-code", 0, "exit code from the previous command (use $?)")
 	flag.Parse()
 
-	fmt.Printf("%s %s\n%s%s ", getWD(), gitStatus(), getArrow(*exitCode), RESET)
+	fmt.Printf("%s %s\n%s%s ", getWD(), gitStatus(), getArrow(*exitCode), reset())
+}
+
+func reset() string {
+	if *ZSH {
+		return fmt.Sprintf("%%{%s%%}", ResetCode)
+	}
+	return ResetCode
 }
 
 func getArrow(code int) string {
