@@ -17,29 +17,51 @@ const (
 	WD_DOTS      = `…`
 	PROMPT_ARROW = `❯`
 
-	BLUE        = `%{$fg[blue]%}`
-	GREEN       = `%{$fg[green]%}`
-	MAGENTA     = `%{$fg[magenta]%}`
-	RED         = `%{$fg[red]%}`
-	YELLOW      = `%{$fg[yellow]%}`
-	RESET_COLOR = `%{$reset_color%}`
+	// colors codes
+	ResetCode = "\033[0m"
+
+	RESET   Color = 0
+	BLUE    Color = 34
+	GREEN   Color = 32
+	MAGENTA Color = 35
+	RED     Color = 31
+	YELLOW  Color = 33
+)
+
+type Color int
+
+func (c Color) String() string {
+	res := ""
+	if c == RESET {
+		res = ResetCode
+	} else {
+		res = fmt.Sprintf("\033[0;%dm", c)
+	}
+
+	if *ZSH {
+		// this tells zsh that the color code is not part of the prompt length
+		return fmt.Sprintf("%%{%s%%}", res)
+	}
+	return res
+}
+
+var (
+	SHELL = ""
+	ZSH   = flag.Bool("zsh", false, "if we're using zsh (affects tab completion)")
 )
 
 func main() {
 	exitCode := flag.Int("exit-code", 0, "exit code from the previous command (use $?)")
 	flag.Parse()
 
-	wd := getWD()
-	arrow := getArrow(*exitCode)
-	gitStatus := NewGitStatus()
-	fmt.Printf(`echo "%s%s %s\n%s%s "`, BLUE, wd, gitStatus, arrow, RESET_COLOR)
+	fmt.Printf("%s %s\n%s%s ", getWD(), gitStatus(), getArrow(*exitCode), RESET)
 }
 
 func getArrow(code int) string {
 	if code != 0 {
-		return RED + PROMPT_ARROW
+		return fmt.Sprintf("%s%s", RED, PROMPT_ARROW)
 	}
-	return YELLOW + PROMPT_ARROW
+	return fmt.Sprintf("%s%s", YELLOW, PROMPT_ARROW)
 }
 
 func getWD() string {
@@ -48,13 +70,13 @@ func getWD() string {
 
 	// PWD is short enough, display as is
 	if len(split) < 5 {
-		return pwd
+		return fmt.Sprintf("%s%s", BLUE, pwd)
 	}
 
 	// PWD is too long, we'll obscure the upper levels
 	pwd = path.Join(append(append(split[:1], WD_DOTS), split[len(split)-3:]...)...)
 
-	return pwd
+	return fmt.Sprintf("%s%s", BLUE, pwd)
 }
 
 type GitStatus struct {
@@ -62,44 +84,59 @@ type GitStatus struct {
 	ahead  string
 	behind string
 
-	idxNew    int // "^A"
-	idxMod    int // "^M"
-	idxDel    int // "^D"
-	uidxMod   int // "^.M"
-	uidxDel   int // "^.D"
-	untracked int // "^??"
+	Unindexed Changes
+	Indexed   Changes
 }
 
-func NewGitStatus() *GitStatus {
-	status := &GitStatus{}
+type Changes struct {
+	Color    string
+	Added    int
+	Modified int
+	Deleted  int
+}
 
+func (c Changes) String() string {
+	res := ""
+	if c.Added > 0 {
+		res += fmt.Sprintf(" +%d", c.Added)
+	}
+	if c.Modified > 0 {
+		res += fmt.Sprintf(" ~%d", c.Modified)
+	}
+	if c.Deleted > 0 {
+		res += fmt.Sprintf(" -%d", c.Deleted)
+	}
+	return res
+}
+
+func gitStatus() *GitStatus {
 	// print the file status
 	cmd := exec.Command("git", "status", "--branch", "--porcelain")
 	bs, err := cmd.Output()
 	if err != nil {
-		return status
+		return &GitStatus{}
 	}
 	output := strings.Split(string(bs), "\n")
 
+	status := &GitStatus{}
 	status.ParseBranch(output[0])
 
 	for _, l := range output[1:] {
 		switch {
 		case strings.HasPrefix(l, "A"):
-			status.idxNew++
+			status.Indexed.Added++
 		case strings.HasPrefix(l, "M"):
-			status.idxMod++
+			status.Indexed.Modified++
 		case strings.HasPrefix(l, "D"):
-			status.idxDel++
+			status.Indexed.Deleted++
 		case strings.HasPrefix(l, " M"):
-			status.uidxMod++
+			status.Unindexed.Modified++
 		case strings.HasPrefix(l, " D"):
-			status.uidxDel++
+			status.Unindexed.Deleted++
 		case strings.HasPrefix(l, "??"):
-			status.untracked++
+			status.Unindexed.Added++
 		}
 	}
-
 	return status
 }
 
@@ -113,13 +150,16 @@ func (s *GitStatus) ParseBranch(line string) {
 	match := reFull.FindStringSubmatch(line)
 	if len(match) > 1 {
 		for i, name := range reFull.SubexpNames() {
+			if match[i] == "" {
+				continue
+			}
 			switch name {
 			case "branch":
 				s.branch = match[i]
 			case "ahead":
-				s.ahead = match[i]
+				s.ahead = " " + GIT_AHEAD + match[i]
 			case "behind":
-				s.behind = match[i]
+				s.behind = " " + GIT_BEHIND + match[i]
 			}
 		}
 		return
@@ -143,46 +183,18 @@ func (s *GitStatus) String() string {
 		return ""
 	}
 
-	res := MAGENTA + GIT_BRANCH + " " + s.branch
+	res := fmt.Sprintf("%s%s %s", MAGENTA, GIT_BRANCH, s.branch) // magenta
 
-	// add unindexed git files
-	if s.untracked > 0 || s.uidxMod > 0 || s.uidxDel > 0 {
-		res += RED
-		if s.untracked > 0 {
-			res += fmt.Sprintf(` +%d`, s.untracked)
-		}
-		if s.uidxMod > 0 {
-			res += fmt.Sprintf(` ~%d`, s.uidxMod)
-		}
-		if s.uidxDel > 0 {
-			res += fmt.Sprintf(` -%d`, s.uidxDel)
-		}
+	if uidx := s.Unindexed.String(); uidx != "" {
+		res += fmt.Sprintf("%s%s", RED, uidx)
+	}
+	if idx := s.Indexed.String(); idx != "" {
+		res += fmt.Sprintf("%s%s", GREEN, idx)
 	}
 
-	// add indexed git files
-	if s.idxNew > 0 || s.idxMod > 0 || s.idxDel > 0 {
-		res += GREEN
-		if s.idxNew > 0 {
-			res += fmt.Sprintf(` +%d`, s.idxNew)
-		}
-		if s.idxMod > 0 {
-			res += fmt.Sprintf(` ~%d`, s.idxMod)
-		}
-		if s.idxDel > 0 {
-			res += fmt.Sprintf(` -%d`, s.idxDel)
-		}
+	if s.ahead == "" && s.behind == "" {
+		return res
 	}
-
-	// add ahead/behind
-	if s.ahead != "" || s.behind != "" {
-		res += YELLOW
-		if s.ahead != "" {
-			res += " " + GIT_AHEAD + s.ahead
-		}
-		if s.behind != "" {
-			res += " " + GIT_BEHIND + s.behind
-		}
-	}
-
+	res += fmt.Sprintf("%s%s%s", YELLOW, s.ahead, s.behind)
 	return res
 }
