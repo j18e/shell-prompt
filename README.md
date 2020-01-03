@@ -1,5 +1,6 @@
 # Shell Prompt
 A lightning fast terminal prompt including detailed Git status info
+![](example.png)
 
 ## Installation
 `go get github.com/j18e/shell-prompt`
