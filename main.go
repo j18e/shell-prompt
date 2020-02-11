@@ -80,9 +80,10 @@ func getWD() string {
 }
 
 type GitStatus struct {
-	branch string
-	ahead  string
-	behind string
+	branch   string
+	ahead    string
+	behind   string
+	noBranch bool
 
 	Unindexed Changes
 	Indexed   Changes
@@ -111,8 +112,7 @@ func (c Changes) String() string {
 
 func gitStatus() *GitStatus {
 	// print the file status
-	cmd := exec.Command("git", "status", "--branch", "--porcelain")
-	bs, err := cmd.Output()
+	bs, err := exec.Command("git", "status", "--branch", "--porcelain").Output()
 	if err != nil {
 		return &GitStatus{}
 	}
@@ -120,6 +120,12 @@ func gitStatus() *GitStatus {
 
 	status := &GitStatus{}
 	status.ParseBranch(output[0])
+	if status.noBranch {
+		bs, err := exec.Command("git", "describe", "--tags").Output()
+		if err == nil && len(bs) > 0 {
+			status.branch = strings.TrimSpace(string(bs))
+		}
+	}
 
 	for _, l := range output[1:] {
 		switch {
@@ -141,6 +147,9 @@ func gitStatus() *GitStatus {
 }
 
 func (s *GitStatus) ParseBranch(line string) {
+	const (
+		noBranch = "## HEAD (no branch)"
+	)
 	var (
 		reFull      = regexp.MustCompile(`^## (?P<branch>\S+)\.{3}\S+( \[(?:ahead (?P<ahead>\d+)(?:, )?)?(?:behind (?P<behind>\d+)?)?\])?$`)
 		reNoRemote  = regexp.MustCompile(`^## (\S+)$`)
@@ -176,6 +185,13 @@ func (s *GitStatus) ParseBranch(line string) {
 		s.branch = match[1]
 		return
 	}
+
+	if line == noBranch {
+		s.branch = "DETACHED"
+		s.noBranch = true
+		return
+	}
+	s.branch = "UNKNOWN"
 }
 
 func (s *GitStatus) String() string {
