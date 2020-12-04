@@ -110,6 +110,19 @@ func (c Changes) String() string {
 	return res
 }
 
+func handleBranchless() string {
+	const rebasePattern = `rebase in progress`
+	bs, err := exec.Command("git", "describe", "--tags").Output()
+	if err == nil && len(bs) > 0 {
+		return strings.TrimSpace(string(bs))
+	}
+	bs, err = exec.Command("git", "status", "nosuchpath").Output()
+	if err == nil && strings.HasPrefix(string(bs), rebasePattern) {
+		return "REBASING"
+	}
+	return "DETACHED"
+}
+
 func gitStatus() *GitStatus {
 	// print the file status
 	bs, err := exec.Command("git", "status", "--branch", "--porcelain").Output()
@@ -120,26 +133,31 @@ func gitStatus() *GitStatus {
 
 	status := &GitStatus{}
 	status.ParseBranch(output[0])
-	if status.noBranch {
-		bs, err := exec.Command("git", "describe", "--tags").Output()
-		if err == nil && len(bs) > 0 {
-			status.branch = strings.TrimSpace(string(bs))
-		}
-	}
 
 	for _, l := range output[1:] {
 		switch {
-		case strings.HasPrefix(l, "A"):
+		case strings.HasPrefix(l, "??"):
+			status.Unindexed.Added++
+		case strings.HasPrefix(l, "A "):
 			status.Indexed.Added++
-		case strings.HasPrefix(l, "M"):
+		case strings.HasPrefix(l, "M "):
 			status.Indexed.Modified++
-		case strings.HasPrefix(l, "D"):
+		case strings.HasPrefix(l, "D "):
 			status.Indexed.Deleted++
+		case strings.HasPrefix(l, "R "):
+			status.Indexed.Modified++
 		case strings.HasPrefix(l, " M"):
 			status.Unindexed.Modified++
 		case strings.HasPrefix(l, " D"):
 			status.Unindexed.Deleted++
-		case strings.HasPrefix(l, "??"):
+		case strings.HasPrefix(l, " T"):
+			status.Unindexed.Modified++
+		case strings.HasPrefix(l, "T "):
+			status.Indexed.Modified++
+		case strings.HasPrefix(l, "MM"):
+			status.Indexed.Modified++
+			status.Unindexed.Modified++
+		case strings.HasPrefix(l, "UU"):
 			status.Unindexed.Added++
 		}
 	}
@@ -187,8 +205,7 @@ func (s *GitStatus) ParseBranch(line string) {
 	}
 
 	if line == noBranch {
-		s.branch = "DETACHED"
-		s.noBranch = true
+		s.branch = handleBranchless()
 		return
 	}
 	s.branch = "UNKNOWN"
