@@ -120,6 +120,10 @@ func handleBranchless() string {
 	if err == nil && strings.HasPrefix(string(bs), rebasePattern) {
 		return "REBASING"
 	}
+	bs, err = exec.Command("git", "rev-parse", "--short", "HEAD").Output()
+	if err == nil {
+		return strings.TrimSpace(string(bs))
+	}
 	return "DETACHED"
 }
 
