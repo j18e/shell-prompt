@@ -175,7 +175,7 @@ func (s *GitStatus) ParseBranch(line string) {
 	var (
 		reFull      = regexp.MustCompile(`^## (?P<branch>\S+)\.{3}\S+( \[(?:ahead (?P<ahead>\d+)(?:, )?)?(?:behind (?P<behind>\d+)?)?\])?$`)
 		reNoRemote  = regexp.MustCompile(`^## (\S+)$`)
-		reNoCommits = regexp.MustCompile(`^## No commits yet on (\S+)$`)
+		reNoCommits = regexp.MustCompile(`^## No commits yet on (\w+)`)
 	)
 
 	match := reFull.FindStringSubmatch(line)
